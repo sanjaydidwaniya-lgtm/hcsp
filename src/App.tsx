@@ -1,100 +1,576 @@
-import { useEffect, useMemo, useState } from 'react';
-import {
-  Award, BarChart3, Bell, BookOpen, CalendarDays, Check, ChevronDown, Circle,
-  Clock3, Dumbbell, FileText, Flame, Gauge, HeartPulse,
-  Home, LockKeyhole, Menu, Moon, Pencil, Plus, RefreshCw, Settings, ShieldCheck,
-  Sparkles, Sun, Target, Trophy, TrendingUp, UserRound, X, Zap
+import React, { useState, useEffect } from 'react';
+import { 
+  Calendar as CalendarIcon, CheckCircle2, XCircle, AlertCircle, 
+  Flame, Trophy, BookOpen, Target, Dumbbell, Sparkles, Lock, 
+  RefreshCw, Home, BarChart2, MoreHorizontal, Clock, Award, FileText, Settings as SettingsIcon
 } from 'lucide-react';
 
-type Status = 'pending' | 'yes' | 'partial' | 'no';
-type TaskType = 'STUDY' | 'REVISION' | 'PYQ' | 'ANSWER WRITING' | 'MOCK TEST' | 'CURRENT AFFAIRS';
-type Task = { id: string; title: string; subject: string; type: TaskType; date: string; status: Status; locked?: boolean };
-type Day = { date: string; hcs: Status; meditation: Status; exercise: Status; studyHours: number; closed: boolean; lockedAt?: string };
-type Subject = { name: string; group: 'PRELIMS' | 'MAINS'; topics: string[] };
+import { INITIAL_SYLLABUS } from './data/hcsSyllabus';
+import { 
+  HCSTask, DailyLog, CurrentAffairsItem, AnswerWritingItem, 
+  UserProfile, SyllabusSubject, TaskStatus 
+} from './types';
 
-const subjects: Subject[] = [
-  { name: 'General Studies', group: 'PRELIMS', topics: ['General Science','Current Events','Indian History & National Movement','Indian & World Geography','Indian Culture','Indian Polity','Indian Economy','General Mental Ability','Haryana Economy, People, Society, Culture and Language'] },
-  { name: 'CSAT', group: 'PRELIMS', topics: ['Comprehension','Interpersonal / Communication Skills','Logical Reasoning','Analytical Ability','Decision Making','Problem Solving','General Mental Ability','Basic Numeracy','Data Interpretation'] },
-  { name: 'English', group: 'MAINS', topics: ['English Language','Essay Writing','Precis Writing','Comprehension','Grammar and Usage'] },
-  { name: 'Hindi', group: 'MAINS', topics: ['Hindi Language','Hindi Essay','Translation','Grammar','Comprehension'] },
-  { name: 'GS-I', group: 'MAINS', topics: ['Indian Culture','Modern Indian History','Freedom Struggle','Post-Independence India','World History','Indian Society','Diversity','Women and Women Organizations','Population','Poverty and Development','Urbanization','Globalization','Social Empowerment','Communalism','Regionalism','Secularism','World Physical Geography','Natural Resources','Industries','Geophysical Phenomena','Haryana-related issues'] },
-  { name: 'GS-II', group: 'MAINS', topics: ['Indian Constitution','Federalism','Separation of Powers','Parliament and State Legislatures','Executive and Judiciary','Representation of People Act','Constitutional Bodies','Statutory / Regulatory Bodies','Government Policies','Development','NGOs / SHGs','Welfare Schemes','Health','Education','Human Resources','Poverty and Hunger','Governance','Transparency','Accountability','E-Governance','Civil Services','India and Neighbourhood','International Relations','International Institutions','Haryana-related issues'] },
-  { name: 'GS-III', group: 'MAINS', topics: ['Indian Economy','Planning','Resources','Growth','Development','Employment','Inclusive Growth','Government Budgeting','Agriculture','Cropping Patterns','Irrigation','Agricultural Marketing','E-technology for farmers','Subsidies and MSP','PDS and Food Security','Food Processing','Land Reforms','Liberalization','Industrial Policy','Infrastructure','Investment Models','Science & Technology','IT and Space','Computers and Robotics','Nanotechnology','Biotechnology','IPR','Environment','Pollution','EIA','Disaster Management','Extremism','Internal Security','Cyber Security','Money Laundering','Border Security','Organized Crime','Security Forces','Haryana-related issues'] },
-  { name: 'GS-IV', group: 'MAINS', topics: ['Ethics','Integrity','Aptitude','Ethics and Human Interface','Human Values','Attitude','Civil Service Values','Impartiality','Objectivity','Dedication to Public Service','Empathy','Tolerance','Compassion','Emotional Intelligence','Moral Thinkers and Philosophers','Public Service Ethics','Ethical Dilemmas','Accountability','Ethical Governance','Probity in Governance','RTI','Codes of Ethics','Codes of Conduct','Citizen Charters','Work Culture','Quality of Service Delivery','Public Funds','Corruption','Case Studies'] },
-];
-const today = new Date().toISOString().slice(0, 10);
-const id = () => Math.random().toString(36).slice(2, 9);
-const prettyDate = (date: string) => new Date(`${date}T12:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
-const initialTasks: Task[] = [
-  { id: 't1', title: 'Indian Constitution — Fundamental Rights', subject: 'GS-II', type: 'STUDY', date: today, status: 'pending' },
-  { id: 't2', title: 'Current affairs: Haryana governance', subject: 'General Studies', type: 'CURRENT AFFAIRS', date: today, status: 'pending' },
-  { id: 't3', title: 'Agriculture and MSP PYQs', subject: 'GS-III', type: 'PYQ', date: today, status: 'pending' },
-  { id: 't4', title: 'Ethics case study response', subject: 'GS-IV', type: 'ANSWER WRITING', date: today, status: 'pending' },
-  { id: 't5', title: 'World History revision', subject: 'GS-I', type: 'REVISION', date: new Date(Date.now() - 86400000).toISOString().slice(0, 10), status: 'yes', locked: true },
-  { id: 't6', title: 'Comprehension practice set', subject: 'CSAT', type: 'MOCK TEST', date: new Date(Date.now() - 86400000).toISOString().slice(0, 10), status: 'no', locked: true },
-];
-const initialDays: Day[] = [{ date: new Date(Date.now() - 86400000).toISOString().slice(0, 10), hcs: 'partial', meditation: 'yes', exercise: 'yes', studyHours: 3.5, closed: true, lockedAt: new Date(Date.now() - 3600000).toISOString() }];
-type Profile = { name: string; examDate: string; startDate: string; hours: number; time: string; rest: string; current: number; target: number };
-type CurrentAffair = { id: string; date: string; topic: string; category: string; notes: string; revision: boolean };
-type AnswerEntry = { id: string; question: string; subject: string; date: string; answer: string; wordLimit: number; marks: number; status: string };
+export default function App() {
+  const getTodayStr = () => new Date().toISOString().split('T')[0];
 
-function App() {
-  const [tab, setTab] = useState('home');
-  const [dark, setDark] = useState(true);
-  const [tasks, setTasks] = useState<Task[]>(() => JSON.parse(localStorage.getItem('hcs_tasks') || JSON.stringify(initialTasks)));
-  const [days, setDays] = useState<Day[]>(() => JSON.parse(localStorage.getItem('hcs_days') || JSON.stringify(initialDays)));
-  const [profile, setProfile] = useState<Profile>(() => JSON.parse(localStorage.getItem('hcs_profile') || JSON.stringify({ name: 'Aspirant', examDate: '2027-02-01', startDate: today, hours: 6, time: '06:00', rest: 'Sunday', current: 0, target: 2000000000000 })));
-  const [showSettings, setShowSettings] = useState(false);
-  const [expanded, setExpanded] = useState<string | null>('General Studies');
-  const [calendarDate, setCalendarDate] = useState(new Date());
-  const [currentAffairs, setCurrentAffairs] = useState<CurrentAffair[]>(() => JSON.parse(localStorage.getItem('hcs_ca') || '[]'));
-  const [answers, setAnswers] = useState<AnswerEntry[]>(() => JSON.parse(localStorage.getItem('hcs_answers') || '[]'));
-  const [planOpen, setPlanOpen] = useState(false);
-  const [toast, setToast] = useState('');
-  useEffect(() => { localStorage.setItem('hcs_tasks', JSON.stringify(tasks)); }, [tasks]);
-  useEffect(() => { localStorage.setItem('hcs_days', JSON.stringify(days)); }, [days]);
-  useEffect(() => { localStorage.setItem('hcs_profile', JSON.stringify(profile)); }, [profile]);
-  useEffect(() => { localStorage.setItem('hcs_ca', JSON.stringify(currentAffairs)); }, [currentAffairs]);
-  useEffect(() => { localStorage.setItem('hcs_answers', JSON.stringify(answers)); }, [answers]);
-  useEffect(() => { if (toast) { const timer = setTimeout(() => setToast(''), 2600); return () => clearTimeout(timer); } }, [toast]);
+  // ================= STATE PERSISTENCE =================
+  const [profile, setProfile] = useState<UserProfile>(() => {
+    const saved = localStorage.getItem('hcs_profile');
+    return saved ? JSON.parse(saved) : {
+      name: 'Sanjay Didwaniya',
+      examDate: '2027-02-15',
+      startDate: getTodayStr(),
+      dailyStudyHours: 8,
+      preferredTime: 'Morning',
+      restDay: 'Sunday',
+      weakSubjects: ['GS-III Economy', 'CSAT Maths'],
+      strongSubjects: ['GS-I History', 'Polity'],
+      lifeGoalTarget: 2000000000000,
+      lifeGoalCurrent: 1500000
+    };
+  });
 
-  const todayTasks = tasks.filter(t => t.date === today);
-  const todayDay = days.find(d => d.date === today);
-  const doneTopics = tasks.filter(t => t.status === 'yes').length + 18;
-  const totalTopics = subjects.reduce((sum, s) => sum + s.topics.length, 0);
-  const syllabusPercent = Math.round((doneTopics / totalTopics) * 100);
-  const score = todayDay ? Math.round(([todayDay.hcs, todayDay.meditation, todayDay.exercise].reduce((s, x) => s + (x === 'yes' ? 100 : x === 'partial' ? 50 : 0), 0)) / 3) : Math.round(todayTasks.reduce((s, t) => s + (t.status === 'yes' ? 100 : t.status === 'partial' ? 50 : 0), 0) / Math.max(todayTasks.length, 1));
-  const studyHours = days.reduce((s, d) => s + d.studyHours, 0) + (todayTasks.filter(t => t.status === 'yes').length * 0.75);
-  const streak = useMemo(() => { let count = 0; const cursor = new Date(); const lookup = new Map(days.map(d => [d.date, d])); while (true) { const key = cursor.toISOString().slice(0,10); const d = lookup.get(key); if (!d || dayScore(d) < 80) break; count++; cursor.setDate(cursor.getDate() - 1); } return count; }, [days]);
-  const bestStreak = Math.max(streak, 3, days.filter(d => dayScore(d) >= 80).length);
-  const notify = (message: string) => setToast(message);
-  const setTaskStatus = (task: Task, status: Status) => { if (task.locked || todayDay?.closed && task.date === today) return notify('This day is locked. Yesterday cannot be rewritten.'); setTasks(items => items.map(item => item.id === task.id ? { ...item, status } : item)); };
-  const closeToday = () => { if (todayDay?.closed) return notify('Today is already locked.'); setDays(items => [...items.filter(d => d.date !== today), { date: today, hcs: todayTasks.length && todayTasks.every(t => t.status === 'yes') ? 'yes' : todayTasks.some(t => t.status === 'yes') ? 'partial' : 'no', meditation: todayDay?.meditation || 'pending', exercise: todayDay?.exercise || 'pending', studyHours: todayTasks.filter(t => t.status === 'yes').length * 0.75, closed: true, lockedAt: new Date().toISOString() }]); setTasks(items => items.map(t => t.date === today ? { ...t, locked: true } : t)); notify('Day locked. Your record is now immutable.'); };
-  const updateWellness = (key: 'meditation' | 'exercise', status: Status) => { if (todayDay?.closed) return notify('This day is locked.'); setDays(items => [...items.filter(d => d.date !== today), { date: today, hcs: todayDay?.hcs || 'pending', meditation: key === 'meditation' ? status : todayDay?.meditation || 'pending', exercise: key === 'exercise' ? status : todayDay?.exercise || 'pending', studyHours: todayDay?.studyHours || 0, closed: false }]); };
-  const reschedule = (task: Task) => { const future = new Date(); future.setDate(future.getDate() + 1); setTasks(items => [...items.map(t => t.id === task.id ? { ...t, status: 'no' as Status, locked: true } : t), { ...task, id: id(), date: future.toISOString().slice(0,10), status: 'pending' as Status, locked: false }]); notify('Missed task preserved and moved to tomorrow.'); };
-  const generatePlan = () => { const future = new Date(); future.setDate(future.getDate() + 1); const additions = subjects.slice(0, 4).map((s, i) => ({ id: id(), title: `${s.topics[i + 2]} focus block`, subject: s.name, type: (i === 0 ? 'REVISION' : i === 1 ? 'PYQ' : 'STUDY') as TaskType, date: new Date(future.getTime() + i * 86400000).toISOString().slice(0,10), status: 'pending' as Status })); setTasks(items => [...items, ...additions]); setPlanOpen(false); notify('A priority-weighted 4-day plan is ready.'); };
-  const reset = () => { if (confirm('Reset all MY HCS JOURNEY data?')) { localStorage.clear(); location.reload(); } };
-  const nav = [{ id:'home', label:'Home', icon:Home }, { id:'today', label:'Today', icon:Target }, { id:'plan', label:'Plan', icon:CalendarDays }, { id:'progress', label:'Progress', icon:BarChart3 }, { id:'more', label:'More', icon:Menu }];
-  return <div className={dark ? 'app dark' : 'app'}>
-    <aside className="sidebar"><div className="brand"><div className="brand-mark"><img src="/app-icon.jpg" onError={e => { e.currentTarget.style.display='none'; }} /><ShieldCheck size={21}/></div><div><strong>MY HCS</strong><span>JOURNEY</span></div></div><nav>{nav.map(item => <button key={item.id} className={tab === item.id ? 'active' : ''} onClick={() => setTab(item.id)}><item.icon size={18}/><span>{item.label}</span></button>)}</nav><div className="sidebar-bottom"><button onClick={() => setShowSettings(true)}><Settings size={18}/> Settings</button><div className="mini-profile"><div className="avatar"><UserRound size={17}/></div><div><b>{profile.name}</b><small>HCS Aspirant</small></div></div></div></aside>
-    <main><header className="topbar"><div className="mobile-brand"><ShieldCheck size={19}/><b>MY HCS <span>JOURNEY</span></b></div><div className="top-actions"><button className="icon-btn" onClick={() => setDark(!dark)} title="Toggle theme">{dark ? <Sun size={17}/> : <Moon size={17}/>}</button><button className="icon-btn" onClick={() => notify('Reminders are stored on this device.')}><Bell size={17}/></button><button className="profile-chip" onClick={() => setShowSettings(true)}><div className="avatar small"><UserRound size={15}/></div><span>{profile.name}</span></button></div></header><div className="content">{tab === 'home' && <HomePage profile={profile} score={score} streak={streak} bestStreak={bestStreak} syllabusPercent={syllabusPercent} studyHours={studyHours} onToday={() => setTab('today')} onPlan={() => setTab('plan')} />}{tab === 'today' && <TodayPage tasks={todayTasks} todayDay={todayDay} score={score} setTaskStatus={setTaskStatus} updateWellness={updateWellness} closeToday={closeToday} reschedule={reschedule} />}{tab === 'plan' && <PlanPage tasks={tasks} profile={profile} planOpen={planOpen} setPlanOpen={setPlanOpen} generatePlan={generatePlan} setTaskStatus={setTaskStatus} />}{tab === 'progress' && <ProgressPage subjects={subjects} syllabusPercent={syllabusPercent} days={days} studyHours={studyHours} streak={streak} bestStreak={bestStreak} expanded={expanded} setExpanded={setExpanded} calendarDate={calendarDate} setCalendarDate={setCalendarDate} />}{tab === 'more' && <MorePage currentAffairs={currentAffairs} setCurrentAffairs={setCurrentAffairs} answers={answers} setAnswers={setAnswers} setTab={setTab} notify={notify} />}</div></main>
-    <div className="bottom-nav">{nav.map(item => <button key={item.id} className={tab === item.id ? 'active' : ''} onClick={() => setTab(item.id)}><item.icon size={19}/><span>{item.label}</span></button>)}</div>
-    {showSettings && <SettingsModal profile={profile} setProfile={setProfile} dark={dark} setDark={setDark} close={() => setShowSettings(false)} reset={reset} />}{toast && <div className="toast"><Check size={16}/>{toast}</div>}
-  </div>;
+  const [syllabus, setSyllabus] = useState<SyllabusSubject[]>(() => {
+    const saved = localStorage.getItem('hcs_syllabus');
+    return saved ? JSON.parse(saved) : INITIAL_SYLLABUS;
+  });
+
+  const [tasks, setTasks] = useState<HCSTask[]>(() => {
+    const saved = localStorage.getItem('hcs_tasks');
+    if (saved) return JSON.parse(saved);
+    // Initial sample task
+    return [{
+      id: 'task-1',
+      date: getTodayStr(),
+      subjectId: 'prelims-gs',
+      topicTitle: 'Indian Culture & Heritage Overview',
+      type: 'STUDY',
+      status: 'PENDING',
+      hours: 3
+    }];
+  });
+
+  const [dailyLogs, setDailyLogs] = useState<Record<string, DailyLog>>(() => {
+    const saved = localStorage.getItem('hcs_daily_logs');
+    return saved ? JSON.parse(saved) : {};
+  });
+
+  const [currentAffairs, setCurrentAffairs] = useState<CurrentAffairsItem[]>(() => {
+    const saved = localStorage.getItem('hcs_ca');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  const [answerWritings, setAnswerWritings] = useState<AnswerWritingItem[]>(() => {
+    const saved = localStorage.getItem('hcs_answers');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  const [activeTab, setActiveTab] = useState<'home' | 'today' | 'plan' | 'progress' | 'more'>('home');
+  const [moreSection, setMoreSection] = useState<'ca' | 'aw' | 'life' | 'settings'>('ca');
+
+  // Local Storage Synchronizer
+  useEffect(() => {
+    localStorage.setItem('hcs_profile', JSON.stringify(profile));
+    localStorage.setItem('hcs_syllabus', JSON.stringify(syllabus));
+    localStorage.setItem('hcs_tasks', JSON.stringify(tasks));
+    localStorage.setItem('hcs_daily_logs', JSON.stringify(dailyLogs));
+    localStorage.setItem('hcs_ca', JSON.stringify(currentAffairs));
+    localStorage.setItem('hcs_answers', JSON.stringify(answerWritings));
+  }, [profile, syllabus, tasks, dailyLogs, currentAffairs, answerWritings]);
+
+  const todayStr = getTodayStr();
+  const currentDayLog = dailyLogs[todayStr] || {
+    date: todayStr,
+    status: 'OPEN',
+    studyHoursTarget: profile.dailyStudyHours,
+    studyHoursAchieved: 0,
+    meditationCompleted: false,
+    exerciseCompleted: false,
+    hcsScorePercent: 0,
+    overallScorePercent: 0
+  };
+
+  const isTodayLocked = currentDayLog.status === 'CLOSED';
+
+  // ================= TASK MANAGEMENT =================
+  const updateTaskStatus = (taskId: string, status: TaskStatus) => {
+    if (isTodayLocked) return; // Strict Locking System Rule
+    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status } : t));
+  };
+
+  const rescheduleMissedTask = (task: HCSTask) => {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowStr = tomorrow.toISOString().split('T')[0];
+
+    const newTask: HCSTask = {
+      ...task,
+      id: `task-${Date.now()}`,
+      date: tomorrowStr,
+      status: 'PENDING',
+      isRescheduledFrom: task.id
+    };
+
+    setTasks(prev => [...prev, newTask]);
+    alert(`Task rescheduled for tomorrow (${tomorrowStr})! Historical task remains LOCKED.`);
+  };
+
+  // ================= LOCK TODAY LOGIC =================
+  const lockToday = () => {
+    const todayTasks = tasks.filter(t => t.date === todayStr);
+    const yesCount = todayTasks.filter(t => t.status === 'YES').length;
+    const partialCount = todayTasks.filter(t => t.status === 'PARTIAL').length;
+    const totalCount = todayTasks.length || 1;
+
+    const hcsScore = Math.round(((yesCount + partialCount * 0.5) / totalCount) * 100);
+    const medScore = currentDayLog.meditationCompleted ? 100 : 0;
+    const exScore = currentDayLog.exerciseCompleted ? 100 : 0;
+    const overallScore = Math.round((hcsScore * 0.6) + (medScore * 0.2) + (exScore * 0.2));
+
+    const updatedLog: DailyLog = {
+      ...currentDayLog,
+      status: 'CLOSED',
+      lockedAt: new Date().toISOString(),
+      hcsScorePercent: hcsScore,
+      overallScorePercent: overallScore
+    };
+
+    setDailyLogs(prev => ({ ...prev, [todayStr]: updatedLog }));
+    alert('🔒 TODAY HAS BEEN LOCKED! All entries are now permanent.');
+  };
+
+  // ================= CALCULATE STREAKS & STATS =================
+  const calculateStreak = () => {
+    let currentStreak = 0;
+    let bestStreak = 0;
+    let tempStreak = 0;
+
+    const sortedDates = Object.keys(dailyLogs).sort();
+    for (const date of sortedDates) {
+      if (dailyLogs[date].overallScorePercent >= 80) {
+        tempStreak++;
+        if (tempStreak > bestStreak) bestStreak = tempStreak;
+      } else {
+        tempStreak = 0;
+      }
+    }
+    currentStreak = tempStreak;
+    return { currentStreak, bestStreak };
+  };
+
+  const { currentStreak, bestStreak } = calculateStreak();
+
+  // Calculate Syllabus Completion %
+  const totalTopics = syllabus.flatMap(s => s.subSubjects.flatMap(sub => sub.topics));
+  const completedTopics = totalTopics.filter(t => t.completed).length;
+  const syllabusPercent = totalTopics.length ? Math.round((completedTopics / totalTopics.length) * 100) : 0;
+
+  // Countdown Calculator
+  const getDaysRemaining = () => {
+    const diff = new Date(profile.examDate).getTime() - new Date().getTime();
+    return Math.max(0, Math.ceil(diff / (1000 * 3600 * 24)));
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans flex flex-col pb-20 md:pb-0 md:flex-row">
+      
+      {/* SIDEBAR FOR DESKTOP */}
+      <aside className="hidden md:flex flex-col w-64 border-r border-slate-800 bg-slate-900/50 p-4">
+        <div className="flex items-center gap-3 mb-8">
+          <div className="w-10 h-10 rounded-full bg-amber-500/20 border border-amber-500 flex items-center justify-center font-bold text-amber-400">
+            HCS
+          </div>
+          <div>
+            <h1 className="font-bold text-sm tracking-wide text-amber-400">MY HCS JOURNEY</h1>
+            <p className="text-xs text-slate-400">{profile.name}</p>
+          </div>
+        </div>
+
+        <nav className="flex flex-col gap-2">
+          {[
+            { id: 'home', label: 'Dashboard', icon: Home },
+            { id: 'today', label: 'Today Command', icon: Target },
+            { id: 'plan', label: 'Syllabus & Plan', icon: BookOpen },
+            { id: 'progress', label: 'Analytics', icon: BarChart2 },
+            { id: 'more', label: 'Modules & Settings', icon: MoreHorizontal },
+          ].map(item => (
+            <button
+              key={item.id}
+              onClick={() => setActiveTab(item.id as any)}
+              className={`flex items-center gap-3 px-4 py-3 rounded-xl font-medium text-sm transition-all ${
+                activeTab === item.id 
+                  ? 'bg-amber-500/10 text-amber-400 border border-amber-500/30' 
+                  : 'text-slate-400 hover:bg-slate-800/50'
+              }`}
+            >
+              <item.icon className="w-5 h-5" />
+              {item.label}
+            </button>
+          ))}
+        </nav>
+      </aside>
+
+      {/* MAIN VIEW AREA */}
+      <main className="flex-1 max-w-5xl mx-auto p-4 md:p-8 w-full overflow-y-auto">
+        
+        {/* ================= 1. HOME / DASHBOARD ================= */}
+        {activeTab === 'home' && (
+          <div className="space-y-6">
+            {/* HERO CARD */}
+            <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-slate-900 via-slate-800 to-amber-950/40 p-6 border border-slate-800 shadow-xl">
+              <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                <div>
+                  <span className="text-xs font-semibold uppercase tracking-wider text-amber-400 bg-amber-500/10 px-3 py-1 rounded-full border border-amber-500/20">
+                    Target Haryana Civil Services
+                  </span>
+                  <h1 className="text-2xl md:text-3xl font-extrabold mt-2">Welcome back, {profile.name}</h1>
+                  <p className="text-slate-400 text-sm italic mt-1">"Every day is recorded. Yesterday cannot be rewritten."</p>
+                </div>
+                <div className="bg-slate-900/80 p-4 rounded-xl border border-amber-500/30 text-center min-w-[140px]">
+                  <div className="text-3xl font-extrabold text-amber-400">{getDaysRemaining()}</div>
+                  <div className="text-[10px] uppercase tracking-wider text-slate-400">Days to Exam</div>
+                </div>
+              </div>
+            </div>
+
+            {/* QUICK STATS */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="bg-slate-900/60 p-4 rounded-xl border border-slate-800">
+                <div className="flex items-center gap-2 text-amber-400 mb-1">
+                  <Flame className="w-5 h-5" />
+                  <span className="text-xs font-medium text-slate-400">Current Streak</span>
+                </div>
+                <div className="text-2xl font-bold">{currentStreak} Days</div>
+              </div>
+
+              <div className="bg-slate-900/60 p-4 rounded-xl border border-slate-800">
+                <div className="flex items-center gap-2 text-emerald-400 mb-1">
+                  <Trophy className="w-5 h-5" />
+                  <span className="text-xs font-medium text-slate-400">Best Streak</span>
+                </div>
+                <div className="text-2xl font-bold">{bestStreak} Days</div>
+              </div>
+
+              <div className="bg-slate-900/60 p-4 rounded-xl border border-slate-800">
+                <div className="flex items-center gap-2 text-blue-400 mb-1">
+                  <BookOpen className="w-5 h-5" />
+                  <span className="text-xs font-medium text-slate-400">Syllabus Done</span>
+                </div>
+                <div className="text-2xl font-bold">{syllabusPercent}%</div>
+              </div>
+
+              <div className="bg-slate-900/60 p-4 rounded-xl border border-slate-800">
+                <div className="flex items-center gap-2 text-purple-400 mb-1">
+                  <Clock className="w-5 h-5" />
+                  <span className="text-xs font-medium text-slate-400">Target Study</span>
+                </div>
+                <div className="text-2xl font-bold">{profile.dailyStudyHours} hrs/day</div>
+              </div>
+            </div>
+
+            {/* MANIFESTATION / LIFE GOAL CARD */}
+            <div className="bg-gradient-to-br from-amber-950/30 via-slate-900 to-slate-900 p-6 rounded-2xl border border-amber-500/30">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="w-5 h-5 text-amber-400" />
+                  <h3 className="font-bold text-amber-400 tracking-wide">🌟 MY LONG-TERM WEALTH GOAL</h3>
+                </div>
+                <span className="text-xs text-amber-300/70 font-mono">MANIFESTATION TARGET</span>
+              </div>
+              <div className="text-3xl md:text-4xl font-extrabold text-amber-300 font-mono tracking-tight my-2">
+                ${profile.lifeGoalTarget.toLocaleString()}
+              </div>
+              <p className="text-xs text-slate-400 mb-4">Personal motivational milestone tracking long-term independence.</p>
+              <div className="w-full bg-slate-800 h-3 rounded-full overflow-hidden border border-slate-700">
+                <div 
+                  className="bg-gradient-to-r from-amber-500 to-yellow-300 h-full transition-all duration-500" 
+                  style={{ width: `${Math.min(100, (profile.lifeGoalCurrent / profile.lifeGoalTarget) * 100)}%` }}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ================= 2. TODAY COMMAND PAGE ================= */}
+        {activeTab === 'today' && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-2xl font-bold">Today's Mission</h2>
+                <p className="text-xs text-slate-400">{todayStr} • {isTodayLocked ? '🔒 DAY LOCKED' : '🔓 OPEN FOR RECORDING'}</p>
+              </div>
+
+              {!isTodayLocked && (
+                <button 
+                  onClick={lockToday}
+                  className="bg-red-600 hover:bg-red-700 text-white text-xs px-4 py-2 rounded-xl flex items-center gap-2 font-bold shadow-lg transition-all"
+                >
+                  <Lock className="w-4 h-4" /> LOCK TODAY & CLOSE
+                </button>
+              )}
+            </div>
+
+            {/* HABITS: MEDITATION & EXERCISE */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className={`p-4 rounded-xl border transition-all ${currentDayLog.meditationCompleted ? 'bg-emerald-950/30 border-emerald-500/40' : 'bg-slate-900 border-slate-800'}`}>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <span className="text-2xl">🧘</span>
+                    <div>
+                      <h4 className="font-bold text-sm">Daily Meditation</h4>
+                      <p className="text-xs text-slate-400">15 Minutes Focus Mindset</p>
+                    </div>
+                  </div>
+                  <button
+                    disabled={isTodayLocked}
+                    onClick={() => setDailyLogs(prev => ({
+                      ...prev,
+                      [todayStr]: { ...currentDayLog, meditationCompleted: !currentDayLog.meditationCompleted }
+                    }))}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold ${
+                      currentDayLog.meditationCompleted ? 'bg-emerald-500 text-slate-950' : 'bg-slate-800 text-slate-300'
+                    }`}
+                  >
+                    {currentDayLog.meditationCompleted ? 'COMPLETED' : 'MARK DONE'}
+                  </button>
+                </div>
+              </div>
+
+              <div className={`p-4 rounded-xl border transition-all ${currentDayLog.exerciseCompleted ? 'bg-emerald-950/30 border-emerald-500/40' : 'bg-slate-900 border-slate-800'}`}>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <span className="text-2xl">🏃</span>
+                    <div>
+                      <h4 className="font-bold text-sm">Daily Exercise</h4>
+                      <p className="text-xs text-slate-400">15 Minutes Physical Activity</p>
+                    </div>
+                  </div>
+                  <button
+                    disabled={isTodayLocked}
+                    onClick={() => setDailyLogs(prev => ({
+                      ...prev,
+                      [todayStr]: { ...currentDayLog, exerciseCompleted: !currentDayLog.exerciseCompleted }
+                    }))}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold ${
+                      currentDayLog.exerciseCompleted ? 'bg-emerald-500 text-slate-950' : 'bg-slate-800 text-slate-300'
+                    }`}
+                  >
+                    {currentDayLog.exerciseCompleted ? 'COMPLETED' : 'MARK DONE'}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* TODAY'S HCS TASKS */}
+            <div className="bg-slate-900/60 p-6 rounded-2xl border border-slate-800 space-y-4">
+              <h3 className="font-bold text-lg text-amber-400">HCS Daily Target Tasks</h3>
+
+              {tasks.filter(t => t.date === todayStr).length === 0 ? (
+                <p className="text-sm text-slate-500 py-4">No HCS tasks generated for today. Add tasks from Syllabus plan.</p>
+              ) : (
+                <div className="space-y-3">
+                  {tasks.filter(t => t.date === todayStr).map(task => (
+                    <div key={task.id} className="p-4 rounded-xl bg-slate-950 border border-slate-800 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                      <div>
+                        <span className="text-[10px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded font-mono uppercase mr-2">{task.type}</span>
+                        <h4 className="font-medium text-sm inline-block">{task.topicTitle}</h4>
+                        <p className="text-xs text-slate-400 mt-1">{task.hours} Hours planned</p>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        {isTodayLocked ? (
+                          <span className={`text-xs px-3 py-1 rounded font-bold ${
+                            task.status === 'YES' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' :
+                            task.status === 'NO' ? 'bg-red-500/20 text-red-400 border border-red-500/30' :
+                            task.status === 'PARTIAL' ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30' :
+                            'bg-slate-800 text-slate-400'
+                          }`}>
+                            {task.status} (LOCKED)
+                          </span>
+                        ) : (
+                          <>
+                            <button
+                              onClick={() => updateTaskStatus(task.id, 'YES')}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${task.status === 'YES' ? 'bg-emerald-500 text-slate-950 border-emerald-400' : 'bg-slate-900 border-slate-700 text-emerald-400'}`}
+                            >
+                              YES
+                            </button>
+                            <button
+                              onClick={() => updateTaskStatus(task.id, 'PARTIAL')}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${task.status === 'PARTIAL' ? 'bg-yellow-500 text-slate-950 border-yellow-400' : 'bg-slate-900 border-slate-700 text-yellow-400'}`}
+                            >
+                              PARTIAL
+                            </button>
+                            <button
+                              onClick={() => updateTaskStatus(task.id, 'NO')}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${task.status === 'NO' ? 'bg-red-500 text-slate-950 border-red-400' : 'bg-slate-900 border-slate-700 text-red-400'}`}
+                            >
+                              NO
+                            </button>
+                          </>
+                        )}
+
+                        {task.status === 'NO' && (
+                          <button
+                            onClick={() => rescheduleMissedTask(task)}
+                            className="p-1.5 rounded-lg bg-blue-600/20 text-blue-400 border border-blue-500/30 hover:bg-blue-600/30 text-xs flex items-center gap-1"
+                            title="Reschedule task for future date"
+                          >
+                            <RefreshCw className="w-3.5 h-3.5" /> Reschedule
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ================= 3. SYLLABUS & PLAN ================= */}
+        {activeTab === 'plan' && (
+          <div className="space-y-6">
+            <div>
+              <h2 className="text-2xl font-bold">HCS Syllabus Tree</h2>
+              <p className="text-xs text-slate-400">Complete pre-loaded syllabus structure as per Gazette.</p>
+            </div>
+
+            {syllabus.map(subject => (
+              <div key={subject.id} className="bg-slate-900/60 border border-slate-800 rounded-2xl p-6 space-y-4">
+                <h3 className="text-xl font-bold text-amber-400 tracking-wide">{subject.name}</h3>
+                <div className="space-y-4">
+                  {subject.subSubjects.map(sub => (
+                    <div key={sub.id} className="bg-slate-950 p-4 rounded-xl border border-slate-800">
+                      <h4 className="font-semibold text-slate-200 mb-3">{sub.name}</h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                        {sub.topics.map(topic => (
+                          <div key={topic.id} className="flex items-center justify-between bg-slate-900 p-2.5 rounded-lg border border-slate-800/80">
+                            <span className="text-xs text-slate-300">{topic.title}</span>
+                            <button
+                              onClick={() => {
+                                setSyllabus(prev => prev.map(s => ({
+                                  ...s,
+                                  subSubjects: s.subSubjects.map(ss => ({
+                                    ...ss,
+                                    topics: ss.topics.map(t => t.id === topic.id ? { ...t, completed: !t.completed } : t)
+                                  }))
+                                })));
+                              }}
+                              className={`text-[10px] font-bold px-2 py-1 rounded ${topic.completed ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-slate-800 text-slate-400'}`}
+                            >
+                              {topic.completed ? 'DONE' : 'PENDING'}
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* ================= 4. ANALYTICS & PROGRESS ================= */}
+        {activeTab === 'progress' && (
+          <div className="space-y-6">
+            <div>
+              <h2 className="text-2xl font-bold">Yearly & Performance Heatmap</h2>
+              <p className="text-xs text-slate-400">Truthful, unalterable historical log record.</p>
+            </div>
+
+            {/* HEATMAP / CALENDAR GRID */}
+            <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-6 space-y-4">
+              <h3 className="font-bold text-sm text-slate-300">Activity Calendar</h3>
+              <div className="grid grid-cols-7 gap-2">
+                {Array.from({ length: 28 }).map((_, idx) => {
+                  const day = idx + 1;
+                  const dateKey = `2026-09-${day < 10 ? '0' + day : day}`;
+                  const log = dailyLogs[dateKey];
+                  const score = log?.overallScorePercent || 0;
+
+                  return (
+                    <div 
+                      key={idx} 
+                      className={`h-12 rounded-lg border flex flex-col items-center justify-center text-xs font-mono font-bold transition-all ${
+                        score >= 80 ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300' :
+                        score >= 50 ? 'bg-yellow-500/20 border-yellow-500/40 text-yellow-300' :
+                        log?.status === 'CLOSED' ? 'bg-red-500/20 border-red-500/40 text-red-300' :
+                        'bg-slate-950 border-slate-800 text-slate-600'
+                      }`}
+                    >
+                      <span>{day}</span>
+                      {log && <span className="text-[9px] opacity-70">{score}%</span>}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ================= 5. MODULES & SETTINGS ================= */}
+        {activeTab === 'more' && (
+          <div className="space-y-6">
+            <div className="flex gap-2 border-b border-slate-800 pb-3">
+              <button onClick={() => setMoreSection('ca')} className={`px-4 py-2 rounded-xl text-xs font-bold ${moreSection === 'ca' ? 'bg-amber-500 text-slate-950' : 'bg-slate-900 text-slate-400'}`}>Current Affairs</button>
+              <button onClick={() => setMoreSection('aw')} className={`px-4 py-2 rounded-xl text-xs font-bold ${moreSection === 'aw' ? 'bg-amber-500 text-slate-950' : 'bg-slate-900 text-slate-400'}`}>Answer Writing</button>
+              <button onClick={() => setMoreSection('settings')} className={`px-4 py-2 rounded-xl text-xs font-bold ${moreSection === 'settings' ? 'bg-amber-500 text-slate-950' : 'bg-slate-900 text-slate-400'}`}>Settings</button>
+            </div>
+
+            {moreSection === 'ca' && (
+              <div className="space-y-4">
+                <h3 className="font-bold text-lg">Current Affairs Module</h3>
+                <p className="text-xs text-slate-400">Offline current affairs note tracker.</p>
+                <div className="bg-slate-900/60 p-4 rounded-xl border border-slate-800">
+                  <p className="text-xs text-slate-500">No Current Affairs items added yet. Click to add new notes.</p>
+                </div>
+              </div>
+            )}
+
+            {moreSection === 'settings' && (
+              <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-6 space-y-4">
+                <h3 className="font-bold text-lg text-red-400">Data & System Management</h3>
+                <button 
+                  onClick={() => {
+                    if (confirm('Are you sure you want to reset all data? This cannot be undone.')) {
+                      localStorage.clear();
+                      window.location.reload();
+                    }
+                  }}
+                  className="bg-red-600/20 text-red-400 border border-red-500/30 hover:bg-red-600/30 px-4 py-2 rounded-xl text-xs font-bold"
+                >
+                  Clear All Personal Data
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+      </main>
+
+      {/* MOBILE BOTTOM NAVIGATION */}
+      <div className="md:hidden fixed bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur-lg border-t border-slate-800 flex justify-around p-3 z-50">
+        {[
+          { id: 'home', label: 'Home', icon: Home },
+          { id: 'today', label: 'Today', icon: Target },
+          { id: 'plan', label: 'Plan', icon: BookOpen },
+          { id: 'progress', label: 'Progress', icon: BarChart2 },
+          { id: 'more', label: 'More', icon: MoreHorizontal },
+        ].map(item => (
+          <button
+            key={item.id}
+            onClick={() => setActiveTab(item.id as any)}
+            className={`flex flex-col items-center gap-1 ${activeTab === item.id ? 'text-amber-400' : 'text-slate-500'}`}
+          >
+            <item.icon className="w-5 h-5" />
+            <span className="text-[10px] font-medium">{item.label}</span>
+          </button>
+        ))}
+      </div>
+
+    </div>
+  );
 }
-function dayScore(d: Day) { return Math.round(([d.hcs, d.meditation, d.exercise].reduce((s, x) => s + (x === 'yes' ? 100 : x === 'partial' ? 50 : 0), 0)) / 3); }
-function StatusPill({ status }: { status: Status }) { return <span className={`status ${status}`}>{status === 'yes' ? 'YES' : status === 'no' ? 'NO' : status === 'partial' ? 'PARTIAL' : 'PENDING'}</span>; }
-function ProgressBar({ value, color = 'green' }: { value: number; color?: string }) { return <div className="progress"><span className={color} style={{ width: `${Math.min(value,100)}%` }}/></div>; }
-function HomePage({ profile, score, streak, bestStreak, syllabusPercent, studyHours, onToday, onPlan }: { profile: Profile; score:number; streak:number; bestStreak:number; syllabusPercent:number; studyHours:number; onToday:()=>void; onPlan:()=>void }) { const daysLeft = Math.max(0, Math.ceil((new Date(profile.examDate).getTime() - Date.now()) / 86400000)); return <><section className="hero"><div className="hero-bg"/><div className="hero-copy"><p className="eyebrow">PERSONAL COMMAND CENTER <span>• {prettyDate(today)}</span></p><h1>Build the officer<br/><em>within.</em></h1><p className="hero-quote">PLAN TODAY. DO TODAY. RECORD TODAY. LOCK TODAY.</p><button className="primary" onClick={onToday}>Open today’s mission <Zap size={16}/></button></div><div className="countdown"><span>HCS EXAM COUNTDOWN</span><b>{daysLeft}</b><small>DAYS TO GO</small><div className="countdown-line"><i/><i/><i/><i/><i/></div></div></section><div className="section-heading"><div><p className="eyebrow">OVERVIEW</p><h2>Welcome back, {profile.name}</h2></div><button className="text-btn" onClick={onPlan}>View study plan <span>→</span></button></div><div className="stats-grid"><Stat icon={<Gauge/>} label="Today's score" value={`${score}%`} tone="gold"/><Stat icon={<Flame/>} label="Current streak" value={`${streak} days`} tone="orange"/><Stat icon={<BookOpen/>} label="HCS syllabus" value={`${syllabusPercent}%`} tone="green"/><Stat icon={<Clock3/>} label="Study hours" value={studyHours.toFixed(1)} tone="blue"/></div><div className="dashboard-grid"><section className="panel mission-panel"><div className="panel-head"><div><p className="eyebrow">FOCUS NOW</p><h3>Today's mission</h3></div><button className="circle-btn" onClick={onToday}>→</button></div><div className="mission-row"><div className="mission-icon green"><Target size={20}/></div><div><b>HCS preparation</b><small>Keep your promise to yourself</small></div><strong>{score}%</strong></div><div className="mission-row"><div className="mission-icon blue"><HeartPulse size={20}/></div><div><b>Wellness baseline</b><small>15 min meditation + exercise</small></div><StatusPill status="pending"/></div><div className="quote-box">“Yesterday cannot be rewritten. Today can be lived fully.”</div></section><section className="panel streak-panel"><div className="streak-top"><div><p className="eyebrow">CONSISTENCY</p><h3>Discipline creates freedom.</h3></div><div className="flame"><Flame size={22}/></div></div><div className="big-number">{streak}<span>days</span></div><div className="streak-meta"><span><b>{bestStreak}</b> best streak</span><span><b>87%</b> weekly score</span></div><div className="week-dots">{['M','T','W','T','F','S','S'].map((d,i)=><div key={i}><span className={i<4?'done':i===4?'partial':''}>{i<4?<Check size={12}/>:''}</span><small>{d}</small></div>)}</div></section></div><LifeGoal profile={profile}/></> }
-function Stat({icon,label,value,tone}:{icon:React.ReactNode;label:string;value:string;tone:string}) { return <div className="stat-card"><div className={`stat-icon ${tone}`}>{icon}</div><div><span>{label}</span><strong>{value}</strong></div><TrendingUp size={14} className="trend"/></div> }
-function LifeGoal({profile}:{profile:Profile}) { const percent = Math.min(100, Math.round((profile.current/profile.target)*100)); return <section className="life-goal"><div className="goal-symbol"><Sparkles size={22}/></div><div className="goal-copy"><p className="eyebrow">MY LIFE GOAL</p><h2>$20,000,00,00,000</h2><p>MY LONG-TERM WEALTH GOAL</p></div><div className="goal-progress"><span>Progress <b>{percent}%</b></span><ProgressBar value={percent} color="gold"/><small>₹{profile.current.toLocaleString('en-IN')} of ₹{profile.target.toLocaleString('en-IN')}</small></div></section> }
-function TodayPage({tasks,todayDay,score,setTaskStatus,updateWellness,closeToday,reschedule}:{tasks:Task[];todayDay?:Day;score:number;setTaskStatus:(t:Task,s:Status)=>void;updateWellness:(k:'meditation'|'exercise',s:Status)=>void;closeToday:()=>void;reschedule:(t:Task)=>void}) { return <><PageTitle eyebrow="ACCOUNTABILITY" title="Today’s mission" subtitle="Every day is recorded. Yesterday cannot be rewritten." action={todayDay?.closed ? <div className="locked-label"><LockKeyhole size={15}/> DAY LOCKED</div> : <button className="primary small" onClick={closeToday}><LockKeyhole size={15}/> Lock today</button>}/><div className="today-overview"><div className="score-ring"><b>{score}</b><span>DAY SCORE</span></div><div><p className="eyebrow">TODAY'S TARGET</p><h3>Show up with intention.</h3><p className="muted">Study 6 hours · Meditation 15 min · Exercise 15 min</p></div></div><div className="today-layout"><section className="panel task-panel"><div className="panel-head"><div><p className="eyebrow">HCS PREPARATION</p><h3>Focus tasks <span>{tasks.length}</span></h3></div><span className="muted">{tasks.filter(t=>t.status==='yes').length}/{tasks.length} complete</span></div>{tasks.map(task => <div className={`task-row ${task.status} ${task.locked ? 'is-locked':''}`} key={task.id}><div className={`task-check ${task.status}`} onClick={() => setTaskStatus(task, task.status === 'yes' ? 'pending' : 'yes')}>{task.status==='yes'?<Check size={16}/>:task.status==='no'?<X size={16}/>:task.status==='partial'?<span/>:<Circle size={16}/>}</div><div className="task-info"><b>{task.title}</b><small>{task.subject} <i>•</i> {task.type}</small></div><StatusPill status={task.status}/>{task.status === 'no' && !task.locked && <button className="reschedule" onClick={()=>reschedule(task)}><RefreshCw size={13}/> Reschedule</button>}{task.locked && <LockKeyhole size={14} className="lock-icon"/>}<div className="status-actions"><button onClick={()=>setTaskStatus(task,'yes')} disabled={task.locked}>Yes</button><button onClick={()=>setTaskStatus(task,'partial')} disabled={task.locked}>Partial</button><button onClick={()=>setTaskStatus(task,'no')} disabled={task.locked}>No</button></div></div>)}</section><aside className="wellness-stack"><Wellness icon={<span className="wellness-emoji">◌</span>} title="Meditation" subtitle="15 minutes of stillness" status={todayDay?.meditation || 'pending'} onChange={s=>updateWellness('meditation',s)} locked={todayDay?.closed}/><Wellness icon={<Dumbbell size={20}/>} title="Exercise" subtitle="15 minutes of movement" status={todayDay?.exercise || 'pending'} onChange={s=>updateWellness('exercise',s)} locked={todayDay?.closed}/><div className="accountability-note"><Pencil size={16}/><div><b>End-of-day check-in</b><p>Submit your record once everything is complete. Closed days are immutable.</p></div></div></aside></div></> }
-function Wellness({icon,title,subtitle,status,onChange,locked}:{icon:React.ReactNode;title:string;subtitle:string;status:Status;onChange:(s:Status)=>void;locked?:boolean}) { return <div className={`panel wellness-card ${status}`}><div className="wellness-head"><div className="wellness-icon">{icon}</div><div><h3>{title}</h3><p>{subtitle}</p></div><StatusPill status={status}/></div><div className="wellness-actions"><button className={status==='yes'?'selected':''} onClick={()=>onChange('yes')} disabled={locked}><Check size={14}/> Completed</button><button className={status==='no'?'selected no':''} onClick={()=>onChange('no')} disabled={locked}><X size={14}/> Not completed</button></div></div> }
-function PageTitle({eyebrow,title,subtitle,action}:{eyebrow:string;title:string;subtitle:string;action?:React.ReactNode}) { return <div className="page-title"><div><p className="eyebrow">{eyebrow}</p><h1>{title}</h1><p className="muted">{subtitle}</p></div>{action}</div> }
-function PlanPage({tasks,profile,planOpen,setPlanOpen,generatePlan,setTaskStatus}:{tasks:Task[];profile:Profile;planOpen:boolean;setPlanOpen:(b:boolean)=>void;generatePlan:()=>void;setTaskStatus:(t:Task,s:Status)=>void}) { const future = tasks.filter(t=>t.date>=today).slice(0,8); return <><PageTitle eyebrow="THE ROADMAP" title="Study plan" subtitle="A weighted rhythm built around your weak subjects and the HCS finish line." action={<button className="primary small" onClick={()=>setPlanOpen(true)}><Sparkles size={15}/> Generate plan</button>}/><div className="plan-settings panel"><div className="plan-setting"><CalendarDays size={18}/><span>Exam date<b>{prettyDate(profile.examDate)} · {Math.max(0,Math.ceil((new Date(profile.examDate).getTime()-Date.now())/86400000))} days</b></span></div><div className="plan-setting"><Clock3 size={18}/><span>Daily commitment<b>{profile.hours} hours · {profile.time}</b></span></div><div className="plan-setting"><RefreshCw size={18}/><span>Weekly reset<b>{profile.rest} is your rest day</b></span></div></div><div className="plan-grid"><section className="panel"><div className="panel-head"><div><p className="eyebrow">UP NEXT</p><h3>Priority queue</h3></div><span className="tag">Weak subjects first</span></div>{future.map(t=><div className="plan-row" key={t.id}><div className="date-block"><b>{prettyDate(t.date)}</b><small>{t.date===today?'TODAY':'UPCOMING'}</small></div><div className="plan-dot"/><div className="task-info"><b>{t.title}</b><small>{t.subject} <i>•</i> {t.type}</small></div><StatusPill status={t.status}/><button className="ghost-icon" onClick={()=>setTaskStatus(t,t.status==='yes'?'pending':'yes')}><Check size={16}/></button></div>)}</section><aside className="panel planner-card"><div className="planner-icon"><Target size={22}/></div><p className="eyebrow">SMART ALLOCATION</p><h3>Protect the hard hours.</h3><p className="muted">Your plan puts more weight behind weak subjects, then cycles revision, PYQs and answer writing so knowledge becomes exam-ready.</p><div className="allocation"><span><i className="dot gold"/> Weak subjects</span><b>40%</b><span><i className="dot green"/> Revision</span><b>25%</b><span><i className="dot blue"/> PYQs & mocks</span><b>20%</b><span><i className="dot gray"/> Buffer</span><b>15%</b></div></aside></div>{planOpen && <div className="modal-backdrop"><div className="modal"><button className="close" onClick={()=>setPlanOpen(false)}><X/></button><div className="modal-icon"><Sparkles/></div><h2>Generate your next rhythm?</h2><p>We’ll distribute high-priority HCS topics across study, revision, PYQs and answer writing. No API, no guesswork.</p><div className="form-grid"><label>Weak subjects<input defaultValue="GS-II, GS-III"/></label><label>Strong subjects<input defaultValue="GS-I, CSAT"/></label></div><button className="primary full" onClick={generatePlan}>Create priority-weighted plan <ArrowIcon/></button></div></div>}</> }
-function ArrowIcon(){return <span>→</span>}
-function ProgressPage({subjects,syllabusPercent,days,studyHours,streak,bestStreak,expanded,setExpanded,calendarDate,setCalendarDate}:{subjects:Subject[];syllabusPercent:number;days:Day[];studyHours:number;streak:number;bestStreak:number;expanded:string|null;setExpanded:(s:string|null)=>void;calendarDate:Date;setCalendarDate:(d:Date)=>void}) { const monthLabel=calendarDate.toLocaleDateString('en-IN',{month:'long',year:'numeric'}); const first=new Date(calendarDate.getFullYear(),calendarDate.getMonth(),1).getDay(); const count=new Date(calendarDate.getFullYear(),calendarDate.getMonth()+1,0).getDate(); return <><PageTitle eyebrow="THE BIG PICTURE" title="Progress" subtitle="Small proof, repeated daily, becomes an undeniable result."/><div className="stats-grid progress-stats"><Stat icon={<BookOpen/>} label="Syllabus complete" value={`${syllabusPercent}%`} tone="green"/><Stat icon={<Clock3/>} label="Study hours" value={studyHours.toFixed(1)} tone="blue"/><Stat icon={<Flame/>} label="Current streak" value={`${streak} days`} tone="orange"/><Stat icon={<Trophy/>} label="Best streak" value={`${bestStreak} days`} tone="gold"/></div><div className="progress-grid"><section className="panel syllabus-panel"><div className="panel-head"><div><p className="eyebrow">HCS SYLLABUS TREE</p><h3>Complete the map</h3></div><span className="tag">{syllabusPercent}% overall</span></div><ProgressBar value={syllabusPercent} color="green"/><div className="tree"><div className="tree-root"><ShieldCheck size={16}/> HCS</div>{(['PRELIMS','MAINS'] as const).map(group=><div key={group} className="tree-group"><div className="tree-label"><span/><b>{group}</b><small>{subjects.filter(s=>s.group===group).reduce((n,s)=>n+s.topics.length,0)} topics</small></div>{subjects.filter(s=>s.group===group).map(s=><div key={s.name} className="subject-node"><button onClick={()=>setExpanded(expanded===s.name?null:s.name)}><span className="subject-bullet"/><b>{s.name}</b><span className="subject-count">{Math.min(s.topics.length, s.name==='GS-II'?8: s.name==='GS-III'?10: s.name==='GS-IV'?9:4)}/{s.topics.length}</span><ChevronDown size={15} className={expanded===s.name?'rotated':''}/></button>{expanded===s.name && <div className="topics">{s.topics.map((topic,i)=><div key={topic}><span className={i < 3 ? 'topic-done':''}>{i<3?<Check size={11}/>:<Circle size={10}/>}</span>{topic}</div>)}</div>}</div>)}</div>)}</div></section><section className="panel analytics-panel"><div className="panel-head"><div><p className="eyebrow">WEEKLY ANALYTICS</p><h3>Your week in proof</h3></div><span className="tag green-tag">86% score</span></div><div className="bar-chart">{['M','T','W','T','F','S','S'].map((d,i)=><div key={i} className="bar-col"><span style={{height:`${[78,92,68,100,54,82,42][i]}%`}}/><small>{d}</small></div>)}</div><div className="metric-line"><span>HCS completion</span><b>81%</b></div><div className="metric-line"><span>Meditation consistency</span><b>100%</b></div><div className="metric-line"><span>Exercise consistency</span><b>86%</b></div><div className="metric-line"><span>Answer writing</span><b>4 / week</b></div></section></div><div className="progress-grid lower"><section className="panel calendar-panel"><div className="panel-head"><div><p className="eyebrow">ACCOUNTABILITY CALENDAR</p><h3>{monthLabel}</h3></div><div className="calendar-actions"><button onClick={()=>setCalendarDate(new Date(calendarDate.getFullYear(),calendarDate.getMonth()-1,1))}>‹</button><button onClick={()=>setCalendarDate(new Date(calendarDate.getFullYear(),calendarDate.getMonth()+1,1))}>›</button></div></div><div className="calendar-week">{['S','M','T','W','T','F','S'].map((d,i)=><span key={i}>{d}</span>)}</div><div className="calendar-grid">{Array.from({length:first}).map((_,i)=><span key={`e${i}`}/>) }{Array.from({length:count}).map((_,i)=>{const date=new Date(calendarDate.getFullYear(),calendarDate.getMonth(),i+1).toISOString().slice(0,10);const d=days.find(x=>x.date===date);return <button key={date} className={d?dayScore(d)>=80?'success':dayScore(d)>0?'partial':'missed':''}><span>{i+1}</span>{d&&<i/>}</button>})}</div><div className="legend"><span><i className="success"/> Successful</span><span><i className="partial"/> Partial</span><span><i className="missed"/> Missed</span><span><i className="empty"/> No activity</span></div></section><section className="panel achievements"><div className="panel-head"><div><p className="eyebrow">MILESTONES</p><h3>Earn your proof</h3></div><Award size={20} className="gold-text"/></div>{[['First Study Day',true,'Start'],['7 Day Streak',true,'Momentum'],['30 Day Streak',false,'Next'],['50 Study Hours',false,'Next'],['100 Tasks',false,'Next'],['HCS Syllabus Completed',false,'Finish']].map(([name,done,label])=><div className={`achievement ${done?'unlocked':''}`} key={name as string}><div className="achievement-icon">{done?<Check size={15}/>:<LockKeyhole size={14}/>}</div><div><b>{name as string}</b><small>{done?'Unlocked':'Keep going'}</small></div><span>{label as string}</span></div>)}</section></div></> }
-function MorePage({currentAffairs,setCurrentAffairs,answers,setAnswers,setTab,notify}:{currentAffairs:CurrentAffair[];setCurrentAffairs:(v:CurrentAffair[])=>void;answers:AnswerEntry[];setAnswers:(v:AnswerEntry[])=>void;setTab:(s:string)=>void;notify:(s:string)=>void}) { const [mode,setMode]=useState<'more'|'ca'|'answers'>('more'); if(mode==='ca') return <CollectionPage type="ca" items={currentAffairs as Record<string,string|number|boolean>[]} setItems={(v)=>setCurrentAffairs(v as unknown as CurrentAffair[])} back={()=>setMode('more')} notify={notify}/>; if(mode==='answers') return <CollectionPage type="answers" items={answers as Record<string,string|number|boolean>[]} setItems={(v)=>setAnswers(v as unknown as AnswerEntry[])} back={()=>setMode('more')} notify={notify}/>; return <><PageTitle eyebrow="YOUR TOOLKIT" title="More" subtitle="The quiet systems that keep the promise visible."/><div className="more-grid"><button className="tool-card" onClick={()=>setMode('ca')}><div className="tool-icon blue"><FileText/></div><h3>Current affairs</h3><p>Capture national, Haryana and world notes manually.</p><span>{currentAffairs.length} notes →</span></button><button className="tool-card" onClick={()=>setMode('answers')}><div className="tool-icon gold"><Pencil/></div><h3>Answer writing</h3><p>Turn preparation into clear, timed responses.</p><span>{answers.length} responses →</span></button><button className="tool-card" onClick={()=>setTab('progress')}><div className="tool-icon green"><Trophy/></div><h3>Achievements</h3><p>Milestones are earned through consistency.</p><span>2 unlocked →</span></button><button className="tool-card" onClick={()=>notify('Daily reminders are ready for this device.')}><div className="tool-icon orange"><Bell/></div><h3>Reminders</h3><p>Study, meditation, exercise and check-in reminders.</p><span>4 active →</span></button></div><div className="philosophy"><Sparkles size={18}/><div><p className="eyebrow">THE ACCOUNTABILITY RULE</p><h3>PLAN TODAY. DO TODAY. RECORD TODAY. LOCK TODAY.</h3><p>Not a timetable. A truthful record of becoming.</p></div></div></> }
-function CollectionPage({type,items,setItems,back,notify}:{type:'ca'|'answers';items:Record<string,string|number|boolean>[];setItems:(v:Record<string,string|number|boolean>[])=>void;back:()=>void;notify:(s:string)=>void}) { const [form,setForm]=useState<Record<string,string|number|boolean>>(type==='ca'?{date:today,topic:'',category:'National',notes:'',revision:false}:{question:'',subject:'GS-II',date:today,answer:'',wordLimit:150,marks:10,status:'Pending'}); const submit=(e:React.FormEvent)=>{e.preventDefault();setItems([...items,{...form,id:id()}]);setForm(type==='ca'?{date:today,topic:'',category:'National',notes:'',revision:false}:{question:'',subject:'GS-II',date:today,answer:'',wordLimit:150,marks:10,status:'Pending'});notify(type==='ca'?'Current affair saved.':'Answer writing saved.');}; return <><PageTitle eyebrow="TOOLKIT" title={type==='ca'?'Current affairs':'Answer writing'} subtitle={type==='ca'?'Build your own revision bank.':'Practice the expression the exam rewards.'} action={<button className="secondary" onClick={back}>← Back</button>}/><div className="collection-grid"><form className="panel form-panel" onSubmit={submit}>{type==='ca'?<><label>Date<input type="date" value={form.date} onChange={e=>setForm({...form,date:e.target.value})}/></label><label>Topic<input required value={form.topic} placeholder="e.g. Haryana budget" onChange={e=>setForm({...form,topic:e.target.value})}/></label><label>Category<select value={form.category} onChange={e=>setForm({...form,category:e.target.value})}>{['National','International','Haryana','Polity','Economy','Environment','Science & Technology','Security','Social Issues'].map(x=><option key={x}>{x}</option>)}</select></label><label>Notes<textarea required value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})}/></label></>:<><label>Question<textarea required value={form.question} placeholder="Write the question prompt" onChange={e=>setForm({...form,question:e.target.value})}/></label><label>Subject<select value={form.subject} onChange={e=>setForm({...form,subject:e.target.value})}>{subjects.map(s=><option key={s.name}>{s.name}</option>)}</select></label><div className="form-grid"><label>Word limit<input type="number" value={form.wordLimit} onChange={e=>setForm({...form,wordLimit:Number(e.target.value)})}/></label><label>Marks<input type="number" value={form.marks} onChange={e=>setForm({...form,marks:Number(e.target.value)})}/></label></div><label>Answer<textarea className="answer-box" value={form.answer} placeholder="Write your answer here" onChange={e=>setForm({...form,answer:e.target.value})}/></label></>}<button className="primary full"><Plus size={15}/> Save {type==='ca'?'note':'response'}</button></form><section className="panel list-panel"><div className="panel-head"><div><p className="eyebrow">YOUR LIBRARY</p><h3>{items.length} {type==='ca'?'notes':'responses'}</h3></div></div>{items.length===0?<div className="empty"><FileText size={25}/><p>Nothing here yet.<br/>Start building your private library.</p></div>:items.map(item=><div className="library-item" key={item.id}><div><b>{type==='ca'?item.topic:item.question}</b><small>{type==='ca'?`${item.category} · ${prettyDate(item.date)}`:`${item.subject} · ${item.wordLimit} words · ${item.marks} marks`}</small></div><button className="ghost-icon" onClick={()=>setItems(items.filter(x=>x.id!==item.id))}><X size={15}/></button></div>)}</section></div></> }
-function SettingsModal({profile,setProfile,dark,setDark,close,reset}:{profile:Profile;setProfile:(v:Profile)=>void;dark:boolean;setDark:(v:boolean)=>void;close:()=>void;reset:()=>void}) { const [local,setLocal]=useState(profile); return <div className="modal-backdrop"><div className="modal settings-modal"><button className="close" onClick={close}><X/></button><div className="modal-icon"><Settings/></div><h2>Settings</h2><p className="muted">Shape the system around your real life.</p><div className="settings-form"><label>Your name<input value={local.name} onChange={e=>setLocal({...local,name:e.target.value})}/></label><label>Exam date<input type="date" value={local.examDate} onChange={e=>setLocal({...local,examDate:e.target.value})}/></label><div className="form-grid"><label>Daily hours<input type="number" value={local.hours} onChange={e=>setLocal({...local,hours:Number(e.target.value)})}/></label><label>Preferred time<input type="time" value={local.time} onChange={e=>setLocal({...local,time:e.target.value})}/></label></div><label>Weekly rest day<select value={local.rest} onChange={e=>setLocal({...local,rest:e.target.value})}>{['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'].map(x=><option key={x}>{x}</option>)}</select></label><div className="theme-toggle"><span>Appearance</span><button onClick={()=>setDark(!dark)}>{dark?<Moon size={15}/>:<Sun size={15}/>} {dark?'Dark':'Light'} mode</button></div><button className="primary full" onClick={()=>{setProfile(local);close();}}>Save settings</button><button className="danger-btn" onClick={reset}>Reset demo data</button></div></div></div> }
-export default App;
